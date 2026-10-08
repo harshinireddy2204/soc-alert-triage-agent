@@ -1,0 +1,396 @@
+# Ground truth for the triage benchmark.
+#
+# Every case is one process on one host plus the detection rules that fired on it.
+# A case gets one of three labels:
+#
+#   malicious    The process was controlled by the simulated attacker (a foothold, a
+#                descendant of one, or a process the attacker started remotely), or
+#                it is a system service carrying out the attacker's request and the
+#                event that fired names something the attacker created (a task, a
+#                service, a dropped file, a tampered setting).
+#   benign       Unrelated to the simulated attack: the operating system, the cloud
+#                and monitoring agents on the lab machines, ordinary user software.
+#   side_effect  A Windows component reacting generically to something the attacker
+#                started, where the event that fired contains nothing the attacker
+#                made (for example csrss.exe opening a handle to a new process).
+#                Reasonable analysts disagree on these, so they are reported but
+#                left out of the headline scores.
+#
+# How a label is derived (see src/triage/labels.py), first match wins:
+#   1. `decisions` under the capture: a reviewed call on one specific process.
+#   2. Attacker lineage: the process matches a foothold or descends from one.
+#   3. `recurring`: situations that repeat across captures, mostly routine activity
+#      of the lab machines.
+# A case that matches nothing fails the build, so nothing is labeled by default.
+#
+# Footholds come from each capture's published description of what the attacker
+# ran (Security Datasets metadata, including the attacker console transcript).
+
+foothold_signatures:
+  - id: empire-stager
+    image: '*\powershell.exe'
+    cmdline: ['*-noP -sta -w 1 -enc*']
+    why: PowerShell Empire agent, started with Empire's stager command line (-noP -sta -w 1 -enc)
+  - id: covenant-grunt
+    image: '*\GruntHTTP*.exe'
+    why: Covenant implant binary (Grunt)
+  - id: downloaded-payload
+    image: '*\Downloads\payload.exe'
+    why: Metasploit payload run from the user's Downloads folder, the entry point of this capture
+
+recurring:
+  - id: task-scheduler-service
+    label: benign
+    why: >-
+      Task Scheduler service updating built-in Windows or vendor tasks. No attacker step in
+      this capture creates or changes a scheduled task.
+    match:
+      image: '*\svchost.exe'
+      rules_all: ['Scheduled Task Created - *', 'BITS Client BitsProxy DLL Loaded By Uncommon Process']
+      triggers_all:
+        - 'image loaded: C:\Windows\System32\BitsProxy.dll*'
+        - '*\Schedule\TaskCache\Tasks\{*'
+        - '*\Schedule\TaskCache\Tree\Microsoft*'
+        - '*\System32\Tasks\Microsoft\Windows\*'
+        - '*\System32\Tasks\OneDrive Standalone Update Task*'
+        - '*\Schedule\TaskCache\Tree\OneDrive Standalone Update Task*'
+        - '*\Windows\Tasks\SA.DAT'
+  - id: azure-guest-agent
+    label: benign
+    why: Azure VM guest agent or one of its extensions doing routine management work as SYSTEM
+    match:
+      ancestor_image: ['C:\WindowsAzure\*', 'C:\Packages\Plugins\*', '*\CollectGuestLogs.exe', '*\WaAppAgent.exe', '*\WindowsAzureGuestAgent.exe']
+  - id: scom-monitoring-agent
+    label: benign
+    why: System Center monitoring agent (MonitoringHost.exe) running its discovery script
+    match:
+      ancestor_image: '*\MonitoringHost.exe'
+  - id: dsc-consistency-check
+    label: benign
+    why: >-
+      WMI provider host running the Desired State Configuration consistency check as SYSTEM.
+      It loads Microsoft DSC resource modules (including the Active Directory ones, which read
+      the domain password policy), which is why PowerShell-host and discovery rules fire
+    match:
+      image: '*\wmiprvse.exe'
+      user: 'NT AUTHORITY\SYSTEM'
+      rules_all:
+        - 'Alternate PowerShell Hosts*'
+        - 'PSScriptPolicyTest Creation By Uncommon Process'
+        - 'PowerShell Core DLL Loaded By Non PowerShell Process'
+        - 'Powershell Token Obfuscation*'
+        - 'Suspicious WSMAN Provider Image Loads'
+        - 'Password Policy Discovery With Get-AdDefaultDomainPasswordPolicy'
+        - 'Uncommon Connection to Active Directory Web Services'
+        - 'System Drawing DLL Load'
+  - id: boot-lsass-handles
+    label: benign
+    why: csrss.exe and wininit.exe open lsass.exe with full access when Windows starts
+    match:
+      image: ['*\csrss.exe', '*\wininit.exe']
+      rules_all: ['Potential Credential Dumping Activity Via LSASS']
+  - id: kernel-raw-disk
+    label: benign
+    why: The System process reading the disk directly, normal kernel behaviour
+    match:
+      image: ['System', '*unknown process*']
+      rules_all: ['Potential Defense Evasion Via Raw Disk Access*']
+  - id: sysmon-shred-noise
+    label: benign
+    why: Windows components rewriting their own log and cache files, which this lab's Sysmon configuration reports as blocked shredding
+    match:
+      image: ['*\taskhostw.exe', '*\svchost.exe']
+      rules_all: ['Sysmon Blocked File Shredding']
+  - id: bits-service
+    label: benign
+    why: Background Intelligent Transfer Service loading its own proxy DLL; no attacker step in this capture uses BITS
+    match:
+      image: '*\svchost.exe'
+      rules_all: ['BITS Client BitsProxy DLL Loaded By Uncommon Process']
+  - id: desktop-software
+    label: benign
+    why: Ordinary desktop software started in the user's logon session (wallpaper tool, Teams, OneDrive, Edge, Windows shell components)
+    match:
+      image:
+        - 'C:\ProgramData\bginfo.exe'
+        - '*\Microsoft\Teams\*'
+        - '*\OneDriveStandaloneUpdater.exe'
+        - '*\DeviceCensus.exe'
+        - '*\RuntimeBroker.exe'
+        - '*\SearchUI.exe'
+        - '*\MicrosoftEdge.exe'
+  - id: defender
+    label: benign
+    why: Microsoft Defender's own service writing its configuration
+    match:
+      image: '*\MsMpEng.exe'
+  - id: remotefx-component
+    label: benign
+    why: Windows RemoteFX component run by Task Scheduler at start-up; it hosts PowerShell to query WMI
+    match:
+      image: 'C:\Windows\System32\RemoteFXvGPUDisablement.exe'
+  - id: payload-mark-of-the-web-removed
+    label: malicious
+    why: >-
+      Explorer removing the downloaded-from-the-internet marker from the attacker's payload.exe
+      as the user launched it. The file named in the event is the attacker's payload
+    match:
+      image: '*\explorer.exe'
+      rules_all: ['ADS Zone.Identifier Deleted']
+      triggers_all: ['*\Downloads\payload.exe:Zone.Identifier']
+  - id: new-process-handle
+    label: side_effect
+    why: >-
+      csrss.exe opens a full-access handle to every new process. The new process here was
+      started by the attack, but the handle itself is ordinary Windows behaviour
+    match:
+      image: '*\csrss.exe'
+      rules_all: ['Uncommon Process Access Rights For Target Image']
+
+captures:
+  cmd_dumping_ntds_dit_file_ntdsutil:
+    footholds:
+      - {host: dc01, pid: 3824, image: '*\cmd.exe', why: "Operator's command prompt on the domain controller, where the documented ntdsutil command was typed"}
+    decisions:
+      - {host: dc01, pid: 600, image: '*\lsass.exe', label: side_effect, why: "Volume Shadow Copy writer loading vss_ps.dll when the attacker's ntdsutil took its snapshot; a stock DLL and standard writer behaviour"}
+      - {host: dc01, pid: 2340, image: '*\DFSRs.exe', label: side_effect, why: "Volume Shadow Copy writer loading vss_ps.dll when the attacker's ntdsutil took its snapshot; a stock DLL and standard writer behaviour"}
+  cmd_dumping_ntds_dit_file_volume_shadow_copy:
+    footholds:
+      - {host: dc01, pid: 2892, image: '*\cmd.exe', why: "Operator's command prompt on the domain controller, where the documented vssadmin, copy and reg save commands were typed"}
+  cmd_lsass_memory_dumpert_syscalls:
+    footholds:
+      - {host: workstation5, pid: 3080, image: '*\cmd.exe', why: "Operator's command prompt from which the Dumpert LSASS dumper was run"}
+  cmd_psexec_lsa_secrets_dump:
+    footholds:
+      - {host: workstation5, pid: 2128, image: '*\cmd.exe', why: "Operator's command prompt from which PsExec was run"}
+      - {host: workstation5, pid: 1460, image: '*\PSEXESVC.exe', why: "PsExec service installed and started by the attacker's PsExec.exe -s"}
+    decisions:
+      - {host: workstation5, pid: 4, image: 'System', label: malicious, why: "The \\PSEXESVC named pipe exists only because the attacker's PsExec service was installed; the pipe named in the event is the attacker's"}
+  cmd_sam_copy_esentutl:
+    footholds:
+      - {host: workstation5, pid: 5884, image: '*\cmd.exe', why: "Operator's command prompt from which esentutl copied the SAM hive"}
+  empire_ninjacopy_dumping_ntds_dit_file:
+    footholds:
+      - {host: dc01, pid: 5728, image: '*\launcher.exe', why: "Empire launcher executable run by the operator; it starts the Empire PowerShell agent"}
+  psh_lsass_memory_dump_comsvcs:
+    footholds:
+      - {host: workstation5, pid: 6100, image: '*\powershell.exe', why: "Operator's PowerShell console from which comsvcs.dll MiniDump was run against lsass.exe"}
+  rdp_interactive_taskmanager_lsass_dump:
+    footholds:
+      - {host: workstation5, pid: 624, image: '*\Taskmgr.exe', why: "Task Manager opened in the attacker's RDP session and used to dump lsass.exe, the documented step of this capture"}
+  cmd_bitsadmin_download_psh_script:
+    footholds:
+      - {host: workstation5, pid: 10044, image: '*\cmd.exe', why: "Operator's command prompt from which bitsadmin downloaded the script"}
+    decisions:
+      - {host: workstation5, pid: 4696, image: '*\svchost.exe', label: side_effect, why: "BITS service loading its own proxy DLL to run the attacker's bitsadmin job; a stock DLL and standard service behaviour"}
+  cmd_mshta_javascript_getobject_sct:
+    footholds:
+      - {host: workstation5, pid: 10196, image: '*\cmd.exe', why: "Operator's command prompt from which mshta ran the remote scriptlet"}
+  cmd_mshta_vbscript_execute_psh:
+    footholds:
+      - {host: workstation5, pid: 5888, image: '*\cmd.exe', why: "Operator's command prompt from which mshta ran the VBScript one-liner"}
+  cmd_netsh_fw_mod_open_ports:
+    footholds:
+      - {host: workstation5, pid: 4160, image: '*\cmd.exe', why: "Operator's command prompt from which the firewall rule was added and removed"}
+  cmd_process_herpaderping_mimiexplorer:
+    footholds:
+      - {host: workstation5, pid: 12340, image: '*\cmd.exe', why: "Operator's command prompt from which ProcessHerpaderping launched mimikatz"}
+  cmd_process_herpaderping_snippingtool:
+    footholds:
+      - {host: workstation5, pid: 10032, image: '*\cmd.exe', why: "Operator's command prompt from which ProcessHerpaderping launched mimikatz"}
+  cmd_wevtutil_modify_security_eventlog_path:
+    decisions:
+      - {host: desktop-cqf82l6, pid: 3548, image: '*\wevtutil.exe', label: malicious, why: "The documented attacker command of this capture: wevtutil redirecting the Security log to another file (run from the payload's shell; Sysmon did not record the parent link)"}
+      - {host: desktop-cqf82l6, pid: 1036, image: '*\svchost.exe', label: malicious, why: "Event Log service applying the attacker's change; the events name the attacker's replacement log file"}
+  covenant_lolbin_wuauclt_createremotethread:
+    decisions:
+      - {host: workstation5, pid: 3576, image: '*\svchost.exe', label: side_effect, why: "Windows service opening a handle to the notepad.exe the attack started; ordinary behaviour toward a new process"}
+  empire_dllinjection_LoadLibrary_CreateRemoteThread:
+    footholds:
+      - {host: workstation5, pid: 9076, image: '*\powershell.exe', why: "Empire agent 712ETU3B (PID 9076 in the attacker console transcript)"}
+      - {host: workstation5, pid: 6536, image: '*\notepad.exe', why: "notepad.exe the Empire agent injected its DLL into; it then hosts PowerShell"}
+  empire_launcher_sct_regsvr32:
+    footholds:
+      - {host: workstation5, pid: 8648, image: '*\powershell.exe', why: "Attacker-controlled PowerShell that ran regsvr32 against the remote launcher.sct"}
+  empire_monologue_netntlm_downgrade:
+    footholds:
+      - {host: it001, pid: 716, image: '*\powershell.exe', why: "Empire agent that ran Invoke-InternalMonologue, the documented step of this capture"}
+  empire_powerview_ldap_ntsecuritydescriptor:
+    footholds:
+      - {host: workstation5, pid: 2488, image: '*\powershell.exe', why: "Empire agent that loaded PowerView and ran Add-DomainObjectAcl, the documented step of this capture"}
+  empire_psinject_PEinjection:
+    footholds:
+      - {host: workstation5, pid: 6008, image: '*\powershell.exe', why: "Empire agent F82SZKVW (PID 6008 in the attacker console transcript)"}
+      - {host: workstation5, pid: 2576, image: '*\notepad.exe', why: "notepad.exe the Empire agent injected a new agent into with psinject"}
+  empire_wmic_add_user_backdoor:
+    footholds:
+      - {host: workstation5, pid: 9564, image: '*\powershell.exe', why: "Attacker-controlled PowerShell that ran wmic /node:WORKSTATION6 process call create"}
+      - {host: workstation6, pid: 7768, image: '*\net.exe', why: "Started remotely over WMI by the attacker's wmic /node:WORKSTATION6 process call create"}
+  psh_cmstp_execution_bypassuac:
+    footholds:
+      - {host: workstation5, pid: 6708, image: '*\powershell.exe', why: "Operator's PowerShell console from which the CMSTP UAC bypass was run"}
+      - {host: workstation5, pid: 10620, image: '*\dllhost.exe', why: "Elevated COM host abused by the CMSTP UAC bypass; it starts the attacker's elevated cmd.exe"}
+  psh_control_panel_execution:
+    footholds:
+      - {host: workstation5, pid: 10632, image: '*\powershell.exe', why: "Operator's PowerShell console that downloaded and ran the malicious .cpl"}
+  psh_hh_local_html_payload:
+    footholds:
+      - {host: workstation5, pid: 2428, image: '*\powershell.exe', why: "Operator's PowerShell console that downloaded and opened the malicious .chm"}
+  psh_mavinject_dll_notepad:
+    footholds:
+      - {host: workstation5, pid: 3904, image: '*\powershell.exe', why: "Operator's PowerShell console that downloaded the DLL and ran mavinject"}
+  psh_mshta_html_application_execution:
+    footholds:
+      - {host: workstation5, pid: 10848, image: '*\powershell.exe', why: "Operator's PowerShell console that dropped the .hta in the Startup folder and ran it"}
+  psh_register_cimprovider_execute_dll:
+    footholds:
+      - {host: workstation5, pid: 4020, image: '*\powershell.exe', why: "Operator's PowerShell console that downloaded the DLL and ran Register-CimProvider"}
+  purplesharp_pe_injection_createremotethread:
+    footholds:
+      - {host: workstation5, pid: 4840, image: '*\cmd.exe', why: "Operator's command prompt from which PurpleSharp was run"}
+  wmic_remote_xsl_jscript:
+    footholds:
+      - {host: workstation5, pid: 5720, image: '*\cmd.exe', why: "Operator's command prompt from which wmic loaded the remote XSL"}
+  cmd_discover_iexplorer_version_registry:
+    footholds:
+      - {host: workstation5, pid: 10308, image: '*\cmd.exe', why: "Operator's command prompt from which the registry query was run"}
+  cmd_seatbelt_group_user:
+    footholds:
+      - {host: workstation5, pid: 12360, image: '*\cmd.exe', why: "Operator's command prompt from which Seatbelt was run"}
+  empire_find_localadmin_smb_svcctl_OpenSCManager:
+    footholds:
+      - {host: workstation5, pid: 1112, image: '*\powershell.exe', why: "Empire agent GCSKD17Z (PID 1112 in the attacker console transcript)"}
+  empire_shell_rpc_samr_smb_group_domain_admins_standard_user:
+    footholds:
+      - {host: workstation6, pid: 5724, image: '*\powershell.exe', why: "Empire agent on WORKSTATION6 that ran net group \"Domain Admins\" /domain"}
+  cmd_sharpview_pcre_net:
+    footholds:
+      - {host: workstation5, pid: 7804, image: '*\cmd.exe', why: "Operator's command prompt from which SharpView was run"}
+  empire_launcher_vbs:
+    footholds:
+      - {host: workstation5, pid: 2440, image: '*\wscript.exe', why: "Empire launcher.vbs opened from the desktop; it starts the Empire PowerShell agent"}
+  psh_python_webserver:
+    footholds:
+      - {host: workstation5, pid: 9320, image: '*\powershell.exe', why: "Operator's PowerShell console that started the Python web server"}
+  covenant_com_wsman_automation:
+    footholds:
+      - {host: workstation6, pid: 6440, image: '*\whoami.exe', why: "Started remotely on WORKSTATION6 through the WSMan automation object by the attacker's Grunt"}
+  covenant_dcom_executeexcel4macro_allowed:
+    footholds:
+      - {host: workstation6, pid: 1324, image: '*\EXCEL.EXE', why: "Excel instance created remotely over DCOM by the attacker to run ExecuteExcel4Macro"}
+  covenant_dcom_iertutil_dll_hijack:
+    footholds:
+      - {host: workstation6, pid: 9428, image: '*\iexplore.exe', why: "Internet Explorer instance created remotely over DCOM; it loads the attacker's planted iertutil.dll"}
+    decisions:
+      - {host: workstation6, pid: 4, image: 'System', label: malicious, why: "The attacker's iertutil.dll written into the Internet Explorer folder over SMB; the file named in the event is the planted DLL"}
+      - {host: workstation5, pid: 212, image: '*\explorer.exe', label: benign, why: "Explorer initialising a user profile at logon; it starts the usual logon programs in the same seconds"}
+      - {host: workstation5, pid: 2464, image: '*\svchost.exe', label: benign, why: "Windows updating its trusted root certificate list"}
+  covenant_dcom_registerxll:
+    footholds:
+      - {host: workstation6, pid: 1364, image: '*\EXCEL.EXE', why: "Excel instance created remotely over DCOM by the attacker to load a malicious XLL"}
+  covenant_psremoting_command:
+    footholds:
+      - {host: workstation6, pid: 1280, image: '*\wsmprovhost.exe', why: "PowerShell remoting session opened on WORKSTATION6 by the attacker's Grunt"}
+  covenant_psremoting_grunt:
+    footholds:
+      - {host: it001, pid: 1332, image: '*\powershell.exe', why: "Attacker-controlled PowerShell that opened the remoting session to HR001"}
+      - {host: hr001, pid: 4676, image: '*\wsmprovhost.exe', why: "PowerShell remoting session opened on HR001 by the attacker; it starts a new Grunt"}
+  covenant_wmi_remote_event_subscription_ActiveScriptEventConsumers:
+    footholds:
+      - {host: workstation5, pid: 3448, image: '*\powershell.exe', why: "Attacker-controlled PowerShell that ran MoveWMI.exe against WORKSTATION6"}
+      - {host: workstation6, pid: 972, image: '*\scrcons.exe', why: "WMI script consumer host running the attacker's remotely registered ActiveScript consumer"}
+  covenant_wmi_wbemcomn_dll_hijack:
+    footholds:
+      - {host: workstation6, pid: 8364, image: '*\WmiPrvSE.exe', why: "WMI provider host that loaded the attacker's planted, unsigned wbemcomn.dll"}
+    decisions:
+      - {host: workstation6, pid: 4, image: 'System', label: malicious, why: "The attacker's wbemcomn.dll written into System32\\wbem over SMB; the file named in the event is the planted DLL"}
+  empire_dcom_shellwindows_stager:
+    footholds:
+      - {host: workstation6, pid: 6108, image: '*\cmd.exe', why: "Started on WORKSTATION6 through the ShellWindows DCOM object by the attacker's Empire agent"}
+      - {pguid: '{b34bc01c-d856-5f64-6e0a-000000000400}', why: "Empire agent on WORKSTATION5 that made the DCOM call to WORKSTATION6"}
+    decisions:
+      - {host: workstation6, pid: 748, image: '*\WerFault.exe', label: benign, why: "Windows Error Reporting filing a kernel crash dump after the machine restarted"}
+  empire_msbuild_dcerpc_wmi_smb:
+    footholds:
+      - {pguid: '{b34bc01c-ca61-5f67-ec12-000000000400}', why: "Empire agent on WORKSTATION5 that made the remote WMI call to WORKSTATION6"}
+      - {host: workstation6, pid: 6952, image: '*\cmd.exe', why: "Started remotely over WMI by the attacker's Empire agent to run MSBuild on the dropped project file"}
+    decisions:
+      - {host: workstation6, image: 'System', label: malicious, why: "The attacker's MSBuild project pshell.xml written to C:\\Windows\\Tasks over SMB; the file named in the event is the dropped payload"}
+  empire_psexec_dcerpc_tcp_svcctl:
+    footholds:
+      - {pguid: '{b34bc01c-7dfc-5f67-de11-000000000400}', why: "Empire agent on WORKSTATION5 that created the remote service on WORKSTATION6"}
+      - {host: workstation6, pid: 9028, image: '*\cmd.exe', why: "Command line of the service the attacker created remotely; it starts an Empire agent as SYSTEM"}
+    decisions:
+      - {host: workstation6, pid: 704, image: '*\services.exe', label: malicious, why: "Service Control Manager registering the attacker's remotely created service; the image path in the event is an Empire launcher"}
+  empire_psremoting_stager:
+    footholds:
+      - {pguid: '{b34bc01c-7dfc-5f67-de11-000000000400}', why: "Empire agent on WORKSTATION5 that opened the remoting session to WORKSTATION6"}
+      - {host: workstation6, pid: 9036, image: '*\wsmprovhost.exe', why: "PowerShell remoting session opened on WORKSTATION6 by the attacker's Empire agent"}
+  empire_shell_dcerpc_smb_service_dll_hijack:
+    footholds:
+      - {host: workstation6, pid: 6172, image: '*\svchost.exe', why: "IKEEXT service host that loaded the attacker's planted, unsigned wlbsctrl.dll and then hosted PowerShell"}
+    decisions:
+      - {host: workstation6, image: 'System', label: malicious, why: "The attacker's wlbsctrl.dll written into System32 over SMB; the file named in the event is the planted DLL"}
+  empire_smbexec_dcerpc_smb_svcctl:
+    footholds:
+      - {host: workstation6, pid: 4716, image: '*\cmd.exe', why: "Command line of the service the attacker created remotely; it starts an Empire agent as SYSTEM"}
+      - {host: workstation5, pid: 8948, image: '*\powershell.exe', why: "Empire agent 7ADX8ZVR (PID 8948 in the attacker console transcript)"}
+    decisions:
+      - {host: workstation6, pid: 704, image: '*\services.exe', label: malicious, why: "Service Control Manager registering the attacker's remotely created service; the image path in the event is an Empire launcher"}
+  empire_wmi_dcerpc_wmi_IWbemServices_ExecMethod:
+    footholds:
+      - {host: workstation5, pid: 2228, image: '*\powershell.exe', why: "Empire agent on WORKSTATION5 that made the remote WMI call to WORKSTATION6"}
+  purplesharp_ad_playbook_I:
+    footholds:
+      - {host: workstation5, pid: 5776, image: '*\cmd.exe', why: "Operator's command prompt from which PurpleSharp was run"}
+      - {host: workstation7, pid: 3804, image: '*\wsmprovhost.exe', why: "PowerShell remoting session opened by PurpleSharp's T1021.006 step"}
+      - {host: workstation6, pid: 4816, image: '*\wsmprovhost.exe', why: "PowerShell remoting session opened by PurpleSharp's T1021.006 step"}
+      - {host: mordordc, pid: 996, image: '*\wsmprovhost.exe', why: "PowerShell remoting session opened by PurpleSharp's T1021.006 step"}
+  schtask_create:
+    footholds:
+      - {host: workstation5, pid: 6432, image: '*\powershell.exe', why: "Attacker-controlled PowerShell from which schtasks created the task on WORKSTATION6"}
+    decisions:
+      - {host: workstation6, pid: 2220, image: '*\svchost.exe', label: malicious, why: "Task Scheduler registering the attacker's remotely created task; it is named EventCacheManager and placed under \\Microsoft\\Windows to blend in"}
+  schtask_modification:
+    footholds:
+      - {host: workstation5, pid: 3284, image: '*\powershell.exe', why: "Attacker-controlled PowerShell that modified the scheduled task on WORKSTATION6 remotely"}
+    decisions:
+      - {host: workstation6, pid: 2220, image: '*\svchost.exe', label: malicious, why: "Task Scheduler applying the attacker's remote change to the EventCacheManager task planted earlier"}
+  cmd_userinitmprlogonscript_batch:
+    footholds:
+      - {host: workstation5, pid: 8836, image: '*\cmd.exe', why: "Operator's command prompt from which the logon script registry value was set"}
+  empire_persistence_registry_modification_run_keys_standard_user:
+    footholds:
+      - {host: workstation5, pid: 5376, image: '*\powershell.exe', why: "Empire agent KU86XWEL (PID 5376 in the attacker console transcript)"}
+  empire_schtasks_creation_execution_elevated_user:
+    footholds:
+      - {host: workstation5, pid: 4092, image: '*\powershell.exe', why: "Empire agent 4SUZ8X62 (PID 4092 in the attacker console transcript)"}
+    decisions:
+      - {host: workstation5, pid: 1156, image: '*\svchost.exe', label: malicious, why: "Task Scheduler registering the attacker's MordorElevated task, which runs an Empire launcher as SYSTEM at logon"}
+      - {host: workstation5, pid: 5076, image: '*\cmd.exe', label: benign, why: "Npcap's CheckStatus.bat scheduled task running at start-up"}
+  empire_schtasks_creation_standard_user:
+    footholds:
+      - {host: workstation5, pid: 7312, image: '*\powershell.exe', why: "Empire agent from which schtasks created the MordorSchtask task"}
+    decisions:
+      - {pguid: '{b34bc01c-7fb0-5f63-2000-000000000400}', label: malicious, why: "Task Scheduler registering the attacker's MordorSchtask task, which runs an Empire launcher daily"}
+  empire_wmi_local_event_subscriptions_elevated_user:
+    footholds:
+      - {host: workstation5, pid: 5676, image: '*\powershell.exe', why: "Empire agent 13ZK6G7M (PID 5676 in the attacker console transcript)"}
+      - {host: workstation5, pid: 7480, image: '*\powershell.exe', why: "Empire launcher started by the attacker's WMI event subscription after the reboot"}
+    decisions:
+      - {host: workstation5, pid: 3176, image: '*\MsMpEng.exe', label: benign, why: "Defender applying the exclusion list set by the Azure antimalware extension at start-up (AntimalwareConfig.exe -enable ran 58 seconds earlier); part of how the lab VMs are built, not an attacker step"}
+      - {host: workstation5, pid: 4004, image: '*\WmiPrvSE.exe', label: malicious, why: "This WMI provider host ran the attacker's command line event consumer and started the Empire launcher"}
+  proxylogon_ssrf_rce_poc:
+    footholds:
+      - {host: mxs01, pid: 12788, image: '*\cmd.exe', why: "Operator's command prompt from which the ProxyLogon exploit script was run"}
+      - {host: mxs01, pid: 23392, image: '*\cmd.exe', why: "Command run by the Exchange worker process through the web shell the exploit planted"}
+      - {host: mxs01, pid: 19748, image: '*\cmd.exe', why: "Command run by the Exchange worker process through the web shell the exploit planted"}
+  cmd_service_mod_fax:
+    footholds:
+      - {host: workstation5, pid: 8692, image: '*\cmd.exe', why: "Operator's command prompt from which the Fax service path was changed"}
+      - {host: workstation5, pid: 1548, image: '*\powershell.exe', why: "PowerShell started by the Service Control Manager as the hijacked Fax service"}
+    decisions:
+      - {host: workstation5, pid: 716, image: '*\services.exe', label: malicious, why: "Service Control Manager storing the attacker's replacement image path for the Fax service"}
+  empire_uac_shellapi_fodhelper:
+    footholds:
+      - {host: workstation5, pid: 1376, image: '*\powershell.exe', why: "Empire agent SP7B3U2X (PID 1376 in the attacker console transcript)"}

@@ -1,0 +1,62 @@
+{
+  "events": 770705,
+  "captures": 105,
+  "rules_compiled": 2774,
+  "rules_skipped": {
+    "expand modifier": 2,
+    "level informational": 13,
+    "log source this loader does not read: None": 1,
+    "log source this loader does not read: appmodel-runtime": 1,
+    "log source this loader does not read: appxdeployment-server": 10,
+    "log source this loader does not read: appxpackaging-om": 1,
+    "log source this loader does not read: capi2": 1,
+    "log source this loader does not read: certificateservicesclient-lifecycle-system": 1,
+    "log source this loader does not read: diagnosis-scripted": 1,
+    "log source this loader does not read: dns-client": 6,
+    "log source this loader does not read: dns-server-analytic": 1,
+    "log source this loader does not read: driver-framework": 1,
+    "log source this loader does not read: file_access": 13,
+    "log source this loader does not read: file_executable_detected": 1,
+    "log source this loader does not read: file_rename": 2,
+    "log source this loader does not read: iis-configuration": 4,
+    "log source this loader does not read: ldap": 1,
+    "log source this loader does not read: lsa-server": 1,
+    "log source this loader does not read: microsoft-servicebus-client": 1,
+    "log source this loader does not read: msexchange-management": 8,
+    "log source this loader does not read: ntlm": 3,
+    "log source this loader does not read: openssh": 1,
+    "log source this loader does not read: printservice-admin": 1,
+    "log source this loader does not read: printservice-operational": 1,
+    "log source this loader does not read: ps_classic_provider_start": 1,
+    "log source this loader does not read: ps_classic_start": 11,
+    "log source this loader does not read: security-mitigations": 2,
+    "log source this loader does not read: shell-core": 1,
+    "log source this loader does not read: smbclient-connectivity": 1,
+    "log source this loader does not read: smbserver-connectivity": 1,
+    "log source this loader does not read: sysmon_error": 1,
+    "log source this loader does not read: sysmon_status": 1,
+    "not a Windows rule": 150
+  },
+  "rules_fired": 224,
+  "hits_without_process": 1887,
+  "otrf_commit": "d9d40ef123d2c87d5d3df28c96bcab4f0faccc87",
+  "sigma_commit": "8a4813404ea3074890e0cda9272d4d1a8b2941d6",
+  "cases": 402,
+  "labels": {
+    "benign": 146,
+    "malicious": 241,
+    "side_effect": 15
+  },
+  "cases_by_split": {
+    "dev": {
+      "malicious": 77,
+      "benign": 42,
+      "side_effect": 3
+    },
+    "test": {
+      "benign": 104,
+      "malicious": 164,
+      "side_effect": 12
+    }
+  }
+}

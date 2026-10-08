@@ -1,0 +1,20 @@
+This project builds on public work by others. None of it is relicensed here.
+
+Security Datasets
+  Open Threat Research Forge (OTRF), https://github.com/OTRF/Security-Datasets
+  MIT License, Copyright (c) 2021 Open Threat Research Forge.
+  The recordings are downloaded at a pinned commit by `python -m triage fetch`; they are not
+  redistributed in this repository. benchmark/cases.jsonl contains short excerpts of events from
+  them (the events that fired detection rules).
+
+Sigma detection rules
+  SigmaHQ, https://github.com/SigmaHQ/sigma
+  Detection Rule License (DRL) 1.1, https://github.com/SigmaHQ/Detection-Rule-License
+  The rules are downloaded at a pinned commit and used unmodified. For every rule that fired,
+  benchmark/cases.jsonl records its title, id, author, description and source path.
+
+MITRE ATT&CK
+  https://attack.mitre.org, data from https://github.com/mitre/cti
+  (c) The MITRE Corporation. This work is reproduced and distributed with the permission of
+  The MITRE Corporation. benchmark/attack_techniques.json holds technique ids, names, tactics
+  and shortened descriptions.
