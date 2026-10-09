@@ -51,6 +51,10 @@ class Event:
     def line(self, limit: int = 220) -> str:
         return f"[E{self.id}] {self.ts[11:23]} {describe(self.channel, self.eid, self.fields, limit)}"
 
+    def line_with_process(self, limit: int = 220) -> str:
+        """The same line followed by the id of the process the event belongs to."""
+        return self.line(limit) + (f"  process={self.pguid}" if self.pguid else "")
+
 
 def _event(row: sqlite3.Row) -> Event:
     return Event(row["id"], row["ts"], row["host"], row["channel"], row["eid"], row["pguid"], unpack_fields(row["data"]))
@@ -85,6 +89,21 @@ class CaseStore:
             (self.capture, pguid.lower(), limit),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def processes_by_image(self, image: str, host: str | None = None) -> list[dict]:
+        """Processes whose program path ends with the given path or file name."""
+        wanted = image.replace("/", "\\").strip().strip('"').lower()
+        name = ntpath.basename(wanted)
+        if not name:
+            return []
+        clause, args = "capture = ? AND lower(image) LIKE ?", [self.capture, "%" + name]
+        if host:
+            clause += " AND host = ?"
+            args.append(host.lower())
+        rows = [dict(r) for r in self.connection.execute(f"SELECT * FROM processes WHERE {clause}", args)]
+        exact = [r for r in rows if (r["image"] or "").lower() == wanted]
+        named = [r for r in rows if ntpath.basename((r["image"] or "").lower()) == name]
+        return exact or named
 
     def creation_event(self, pguid: str) -> Event | None:
         record = self.process(pguid)

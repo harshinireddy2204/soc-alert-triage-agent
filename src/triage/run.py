@@ -73,6 +73,7 @@ def run_policy(policy, cases: list[dict], out_path: Path, resume: bool = True, l
                 "output_tokens": trace.get("output_tokens", 0),
                 "invalid_replies": trace.get("invalid_replies", 0),
                 "failure": trace.get("failure"),
+                "rejected_replies": trace.get("rejected_replies", []),
                 "steps": trace.get("steps", []),
             }
             if "signals" in trace:

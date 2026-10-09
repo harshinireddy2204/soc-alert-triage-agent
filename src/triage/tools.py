@@ -26,7 +26,7 @@ TOOL_SPECS = [
             "metadata, its parent chain, its child processes, and how many events of each kind it has. "
             "Omit `process` for the process this case is about."
         ),
-        "arguments": {"process": "optional process id shown in braces, e.g. {297bc33e-...}"},
+        "arguments": {"process": "optional process id in braces as printed after 'process=', or a program path"},
     },
     {
         "name": "process_events",
@@ -35,7 +35,7 @@ TOOL_SPECS = [
             + ", ".join(KINDS)
             + ". Omit `kind` for all kinds. Use `offset` to page."
         ),
-        "arguments": {"process": "optional process id", "kind": "optional event kind", "offset": "optional integer"},
+        "arguments": {"process": "optional process id or program path", "kind": "optional event kind", "offset": "optional, default 0"},
     },
     {
         "name": "host_timeline",
@@ -126,12 +126,28 @@ class Toolbox:
         return [event.line(limit) for event in events]
 
     def _resolve(self, process: object) -> str:
+        """Turn what the agent wrote into a process id.
+
+        Models often name a process by its program path instead of its id. When
+        that names exactly one process the call goes ahead; when it names several,
+        the one that started closest to the alert is used. Either way the agent
+        can read which process it got from the first line of the tool output.
+        """
         if process in (None, "", "subject"):
             return self.case["pguid"]
-        match = re.search(r"\{[0-9a-fA-F-]{36}\}", str(process))
-        if not match:
-            raise ToolError("process must be a process id in braces, as shown by process_info, or omitted")
-        return match.group(0).lower()
+        text = str(process)
+        match = re.search(r"\{[0-9a-fA-F-]{36}\}", text)
+        if match:
+            return match.group(0).lower()
+        candidates = self.store.processes_by_image(text, self.case["host"]) or self.store.processes_by_image(text)
+        if not candidates:
+            raise ToolError(
+                f"no process with program {text!r} in this recording. Use a process id in braces, as printed "
+                "after 'process=' in tool output, or omit `process` for the case process"
+            )
+        anchor = self.case["first_alert_ts"]
+        candidates.sort(key=lambda record: abs(_seconds_between(anchor, record["first_seen"])))
+        return candidates[0]["pguid"]
 
     def _kinds(self, kinds: object) -> list[str] | None:
         if kinds in (None, "", []):
@@ -201,7 +217,11 @@ class Toolbox:
         ordered = list(groups.items())[start : start + MAX_LINES]
         if not ordered:
             return f"No more events; there are {len(groups)} distinct event(s)."
-        lines = [f"{total} event(s), {len(groups)} distinct; showing distinct {start + 1} to {start + len(ordered)}"]
+        record = self.store.process(pguid) or {}
+        lines = [
+            f"Process {pguid} ({ntpath.basename(record.get('image') or 'unknown')}): {total} event(s), {len(groups)} distinct; "
+            f"showing distinct {start + 1} to {start + len(ordered)}"
+        ]
         for text, members in ordered:
             first = members[0]
             self.shown_events.add(first.id)
@@ -230,7 +250,9 @@ class Toolbox:
             # Keep the events closest to the alert when there are too many to show.
             events = sorted(sorted(events, key=lambda e: abs(_seconds_between(anchor, e.ts)))[:MAX_LINES], key=lambda e: (e.ts, e.id))
             header += f"; showing the {MAX_LINES} closest to the alert"
-        return "\n".join([header, *self._show(events)])
+        for event in events:
+            self.shown_events.add(event.id)
+        return "\n".join([header, *[event.line_with_process() for event in events]])
 
     def search_events(self, text: object = None, kinds: object = None, host: object = None) -> str:
         if not text or len(str(text).strip()) < 3:
@@ -242,7 +264,7 @@ class Toolbox:
         lines = [f"{total} event(s) contain {str(text).strip()!r}; showing {len(events)}"]
         for event in events:
             self.shown_events.add(event.id)
-            lines.append(f"{event.line()}  (host {event.host}, process {event.pguid})")
+            lines.append(f"{event.line()}  host={event.host} process={event.pguid}")
         return "\n".join(lines)
 
     def get_event(self, event: object = None) -> str:
@@ -297,6 +319,11 @@ class Toolbox:
             extra = [key for key in arguments if key not in allowed]
             if extra:
                 raise ToolError(f"{name} does not take {extra[0]!r}; arguments: {', '.join(allowed) or 'none'}")
+            repeated = [c for c in self.calls if c["tool"] == name and c["arguments"] == arguments]
+            if len(repeated) >= 1 and not repeated[-1]["ok"]:
+                raise ToolError("you already made this exact call and it failed the same way. Change the arguments or use another tool")
+            if len(repeated) >= 2:
+                raise ToolError("you have already made this exact call twice. Use what you learned, or try something different")
             output = getattr(self, name)(**arguments)
             record["ok"] = True
         except ToolError as error:

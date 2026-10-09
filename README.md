@@ -19,7 +19,7 @@ number in this README is produced by a command you can run.
 | **Benchmark** | 402 triage cases (241 malicious, 146 benign, 15 set aside as ambiguous), each with a written reason for its label |
 | **Agent** | A tool-using LLM agent (7 investigation tools) that runs on a local model through Ollama or on any OpenAI-compatible endpoint |
 | **Baselines** | Always escalate, trust rule severity, and a hand-written evidence checklist: the "no AI" competitors |
-| **Evaluation** | Verdict accuracy, missed attacks, escalation quality, an accuracy-versus-coverage curve, evidence grounding, and cost per case |
+| **Evaluation** | Verdict accuracy, missed attacks, escalation quality, an accuracy-versus-coverage curve, evidence grounding, and cost per case, plus [the metric vendor scorecards leave out](#the-seventh-metric) |
 
 The cases are not easy to tell apart by looking at the alert. 72 of the 241 malicious cases tripped
 only low-severity rules, and 18 benign cases tripped high-severity ones. Some of the benign ones:
@@ -76,6 +76,38 @@ was measured, and that run needs a model. It is one command (see
 [Run the agent](#run-the-agent-on-a-local-model)); `python -m triage report` then adds the row and
 redraws both charts. Full breakdowns, including every wrong verdict and why the truth is what it
 is, are in [results/RESULTS_test.md](results/RESULTS_test.md).
+
+## The seventh metric
+
+AI SOC vendors publish how they want their agents measured. One widely cited list has six metrics:
+triage automation rate, mean time to triage, false positive reduction, analyst time per
+investigation, escalation rate, and incident response time
+([source](https://blog.7ai.com/6-agentic-ai-soc-metrics-measuring-the-value-of-ai-agents-in-security-operations)).
+They are the right operational metrics. All six measure speed and volume. None of them asks
+whether a closed alert was really benign.
+
+That matters because a policy can look excellent on all six while failing at the job. This
+benchmark has ground truth, so it can score the same policies on the published metrics and on the
+one that is missing:
+
+<!-- seventh:start -->
+| Policy | 1. Triage automation rate | 2. Time to triage | 3. False positives removed | 5. Escalation rate | **7. Silent misses** | Escalation aim |
+|---|---|---|---|---|---|---|
+| `always-escalate` | 0% | 0.0s | 0% | 100% | **0 of 164 attacks (0.0%)** | n/a |
+| `severity-rule` | 100% | 0.0s | 87% | 0% | **87 of 164 attacks (53.0%)** | n/a |
+| `scorecard` | 63% | 0.0s | 78% | 37% | **5 of 164 attacks (3.0%)** | 5.2x |
+
+Columns 1, 2, 3 and 5 follow the published definitions: share of alerts fully handled without a person, mean time to a triage decision, share of benign alerts closed without a person, and share sent to a person. Metrics 4 and 6 (analyst time per investigation, incident response time) need live analysts and are not measured here. **Silent misses** are real attacks closed with no human review. **Escalation aim** is how much more often the policy's best guess is wrong on the cases it escalates than on the cases it closes itself; above 1x means it escalates the right cases, and n/a means it never escalates or never decides.
+<!-- seventh:end -->
+
+`severity-rule` is the cautionary row. It automates everything, escalates nothing, answers
+instantly, and removes most false positives. On the published metrics measured here it is close to perfect.
+It also closes more than half of the real attacks without anyone looking.
+
+The point is not that the six are wrong. It is that they are only safe to optimise once a seventh
+is held fixed: **silent misses, measured against ground truth, with escalation shown to be aimed
+at the cases the agent would have got wrong.** Measuring it needs a labeled benchmark, which is
+what this repository is.
 
 ## One case, start to finish
 
@@ -182,7 +214,7 @@ python -m triage build            # event store, detection, labels (about 4 minu
 python -m triage run scorecard    # also: severity-rule, always-escalate
 python -m triage report           # tables, charts, and the Results section of this README
 python -m triage show C0324       # one case, every policy's investigation, and the truth
-pytest                            # 39 tests, no data needed
+pytest                            # 44 tests, no data needed
 ```
 
 `build` reproduces `benchmark/cases.jsonl` byte for byte from the pinned sources.
@@ -245,7 +277,7 @@ src/triage/  sigma.py (rule evaluator)  corpus.py, build.py (ingest)  detect.py 
              tools.py, store.py (investigation)  agent.py, llm.py  baselines.py
              evaluate.py, report.py  cli.py
 results/     saved runs and generated tables
-tests/       39 tests that run without the data
+tests/       44 tests that run without the data
 docs/        methodology, charts
 ```
 

@@ -11,6 +11,7 @@ from .evaluate import evaluate
 from .run import load_results, select_cases
 
 START, END = "<!-- results:start -->", "<!-- results:end -->"
+SEVENTH_START, SEVENTH_END = "<!-- seventh:start -->", "<!-- seventh:end -->"
 # Categorical colours in fixed order (blue, orange, aqua, yellow, magenta, green).
 SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"]
 INK, MUTED, GRID, SURFACE = "#0b0b0b", "#52514e", "#e4e3df", "#fcfcfb"
@@ -84,6 +85,35 @@ def cost_table(reports: list[dict]) -> str:
             f"{(_pct(evidence['citation_validity']) + ' of ' + str(evidence['citations'])) if evidence['citations'] else 'cites nothing'} | "
             f"{cost['failed_investigations']} |"
         )
+    return "\n".join(lines)
+
+
+def seventh_metric_table(reports: list[dict]) -> str:
+    """The operational metrics vendors publish, next to the one they leave out."""
+    lines = [
+        "| Policy | 1. Triage automation rate | 2. Time to triage | 3. False positives removed | 5. Escalation rate "
+        "| **7. Silent misses** | Escalation aim |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for r in reports:
+        wrong_when_escalated, wrong_when_auto = r["escalated_would_be_wrong"], r["auto_would_be_wrong"]
+        if wrong_when_escalated is None or not wrong_when_auto:
+            aim = "n/a"
+        else:
+            aim = f"{wrong_when_escalated / wrong_when_auto:.1f}x"
+        lines.append(
+            f"| `{r['policy']}` | {_pct(r['auto_resolved'])} | {r['cost']['mean_seconds']:.1f}s | {_pct(r['auto_closed_benign'])} | "
+            f"{_pct(r['escalated'])} | **{r['missed_attack_count']} of {r['malicious']} attacks ({_pct(r['missed_attacks'], 1)})** | {aim} |"
+        )
+    lines += [
+        "",
+        "Columns 1, 2, 3 and 5 follow the published definitions: share of alerts fully handled without a person, mean time "
+        "to a triage decision, share of benign alerts closed without a person, and share sent to a person. Metrics 4 and 6 "
+        "(analyst time per investigation, incident response time) need live analysts and are not measured here. "
+        "**Silent misses** are real attacks closed with no human review. **Escalation aim** is how much more often the policy's "
+        "best guess is wrong on the cases it escalates than on the cases it closes itself; above 1x means it escalates the "
+        "right cases, and n/a means it never escalates or never decides.",
+    ]
     return "\n".join(lines)
 
 
@@ -291,6 +321,9 @@ def write_report(split: str = "test", bootstrap_rounds: int = 1000, update_readm
         text = readme.read_text(encoding="utf-8")
         if START in text and END in text:
             block = f"{START}\n{results_markdown(reports, split)}\n{END}"
-            readme.write_text(re.sub(re.escape(START) + r".*?" + re.escape(END), lambda _: block, text, flags=re.DOTALL), encoding="utf-8")
+            text = re.sub(re.escape(START) + r".*?" + re.escape(END), lambda _: block, text, flags=re.DOTALL)
+            seventh = f"{SEVENTH_START}\n{seventh_metric_table(reports)}\n{SEVENTH_END}"
+            text = re.sub(re.escape(SEVENTH_START) + r".*?" + re.escape(SEVENTH_END), lambda _: seventh, text, flags=re.DOTALL)
+            readme.write_text(text, encoding="utf-8")
     log(f"wrote results/summary_{split}.json, results/RESULTS_{split}.md and charts in docs/img")
     return reports

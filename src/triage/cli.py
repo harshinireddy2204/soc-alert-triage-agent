@@ -41,7 +41,7 @@ def _policy(args: argparse.Namespace):
     if not args.model:
         raise SystemExit("--model is required for the llm policy, for example --model qwen2.5:7b")
     backend = make_backend(args.backend, args.model, args.base_url, args.api_key_env, args.context_tokens)
-    return LLMAgent(backend, max_steps=args.max_steps)
+    return LLMAgent(backend, max_steps=args.max_steps, context_tokens=args.context_tokens)
 
 
 def cmd_run(args: argparse.Namespace) -> None:

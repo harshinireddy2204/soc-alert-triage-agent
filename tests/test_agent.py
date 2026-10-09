@@ -115,3 +115,50 @@ def test_the_agent_never_sees_the_answer(case, recording, tmp_path, monkeypatch)
 def test_case_rendering_is_complete(case):
     text = render_case(case)
     assert "Local Accounts Discovery" in text and "[E104]" in text and "Admin activity" in text
+
+
+# The cases below reproduce what a real 7B local model did on its first run.
+
+
+def test_a_program_path_is_accepted_where_a_process_id_is_expected(case, recording):
+    box = Toolbox(case, recording["store"])
+    by_path = box.call("process_events", {"process": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"})
+    assert by_path.startswith(f"Process {G_AGENT} (powershell.exe)") and "10.10.10.5:80" in by_path
+    assert G_AGENT in box.call("process_info", {"process": "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"})
+    assert box.call("process_info", {"process": "C:\\nowhere\\missing.exe"}).startswith("ERROR: no process with program")
+    assert f"process={G_AGENT}" in box.call("host_timeline", {"seconds_before": 5})
+
+
+def test_repeating_a_failed_call_is_stopped(case, recording):
+    box = Toolbox(case, recording["store"])
+    first = box.call("process_info", {"process": "missing.exe"})
+    second = box.call("process_info", {"process": "missing.exe"})
+    assert first != second and "already made this exact call" in second
+    box.call("process_info", {})
+    box.call("process_info", {})
+    assert "already made this exact call twice" in box.call("process_info", {})
+
+
+def test_final_answers_in_other_shapes_are_understood(case, recording):
+    shapes = [
+        json.dumps({"verdict": "malicious", "confidence": 0.8, "escalate": False, "summary": "s", "evidence": ["E104"]}),
+        json.dumps({"action": "final_answer", "verdict": "benign", "confidence": 0.7, "escalate": True, "summary": "s"}),
+        json.dumps({"tool": "attack_technique", "args": {"id": "T1033"}}),
+    ]
+    verdict, trace = LLMAgent(ScriptedBackend([shapes[2], shapes[0]])).triage(case, Toolbox(case, recording["store"]))
+    assert verdict.verdict == "malicious" and trace["invalid_replies"] == 0 and trace["steps"][0]["action"] == "attack_technique"
+    verdict, _ = LLMAgent(ScriptedBackend([shapes[1]])).triage(case, Toolbox(case, recording["store"]))
+    assert verdict.verdict == "benign" and verdict.escalate
+
+
+def test_the_first_message_already_contains_the_process_details(case, recording):
+    backend = ScriptedBackend([final()])
+    _, trace = LLMAgent(backend).triage(case, Toolbox(case, recording["store"]))
+    opening = backend.seen[0][1]["content"]
+    assert "Parent chain (nearest first):" in opening and "-noP -sta -w 1 -enc" in opening
+    assert trace["rejected_replies"] == []
+
+
+def test_rejected_replies_are_kept_for_diagnosis(case, recording):
+    _, trace = LLMAgent(ScriptedBackend(["not json", final()])).triage(case, Toolbox(case, recording["store"]))
+    assert trace["rejected_replies"] == ["not json"]
