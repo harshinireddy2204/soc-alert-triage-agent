@@ -581,5 +581,211 @@
       "escalated": 2
     },
     "file": "scorecard.jsonl"
+  },
+  {
+    "cases": 268,
+    "malicious": 164,
+    "benign": 104,
+    "forced_accuracy": 0.7873134328358209,
+    "attack_recall": 0.7317073170731707,
+    "false_alarm_rate": 0.125,
+    "auto_resolved": 0.917910447761194,
+    "auto_accuracy": 0.8130081300813008,
+    "missed_attacks": 0.21341463414634146,
+    "benign_raised_as_attack": 0.10576923076923077,
+    "auto_closed_benign": 0.8269230769230769,
+    "escalated": 0.08208955223880597,
+    "escalated_would_be_wrong": 0.5,
+    "auto_would_be_wrong": 0.18699186991869918,
+    "errors_caught_by_escalation": 0.19298245614035087,
+    "missed_attack_count": 35,
+    "false_alarm_count": 11,
+    "policy": "ollama:qwen2.5:14b",
+    "confidence_intervals": {
+      "forced_accuracy": [
+        0.7152777777777778,
+        0.8450704225352113
+      ],
+      "attack_recall": [
+        0.6404494382022472,
+        0.8181818181818182
+      ],
+      "false_alarm_rate": [
+        0.06578947368421052,
+        0.19090909090909092
+      ],
+      "auto_resolved": [
+        0.8842105263157894,
+        0.9464285714285714
+      ],
+      "auto_accuracy": [
+        0.7447916666666666,
+        0.8695652173913043
+      ],
+      "missed_attacks": [
+        0.12883435582822086,
+        0.30718954248366015
+      ],
+      "benign_raised_as_attack": [
+        0.046875,
+        0.16176470588235295
+      ]
+    },
+    "cases_without_result": 0,
+    "risk_coverage": [
+      {
+        "coverage": 0.0037313432835820895,
+        "accuracy": 1.0,
+        "confidence": 1.0
+      },
+      {
+        "coverage": 0.664179104477612,
+        "accuracy": 0.8932584269662921,
+        "confidence": 0.95
+      },
+      {
+        "coverage": 0.9067164179104478,
+        "accuracy": 0.8189300411522634,
+        "confidence": 0.9
+      },
+      {
+        "coverage": 0.917910447761194,
+        "accuracy": 0.8170731707317073,
+        "confidence": 0.85
+      },
+      {
+        "coverage": 0.9328358208955224,
+        "accuracy": 0.812,
+        "confidence": 0.8
+      },
+      {
+        "coverage": 0.9552238805970149,
+        "accuracy": 0.8046875,
+        "confidence": 0.75
+      },
+      {
+        "coverage": 0.9925373134328358,
+        "accuracy": 0.7894736842105263,
+        "confidence": 0.7
+      },
+      {
+        "coverage": 0.996268656716418,
+        "accuracy": 0.7865168539325843,
+        "confidence": 0.6
+      },
+      {
+        "coverage": 1.0,
+        "accuracy": 0.7873134328358209,
+        "confidence": 0.5
+      }
+    ],
+    "area_under_risk_coverage": 0.1330854257873149,
+    "coverage_at_95_accuracy": 0.0037313432835820895,
+    "coverage_at_99_accuracy": 0.0037313432835820895,
+    "evidence": {
+      "citations": 892,
+      "citations_never_shown": 2,
+      "citation_validity": 0.9977578475336323,
+      "verdicts_with_valid_citation": 0.9925373134328358
+    },
+    "cost": {
+      "mean_tool_calls": 3.656716417910448,
+      "mean_seconds": 123.97085074626867,
+      "mean_input_tokens": 13411.212686567163,
+      "mean_output_tokens": 510.410447761194,
+      "failed_investigations": 1,
+      "tool_errors": 18
+    },
+    "by_rule_severity": {
+      "critical": {
+        "cases": 6,
+        "forced_accuracy": 0.6666666666666666,
+        "auto_resolved": 0.8333333333333334,
+        "auto_accuracy": 0.6,
+        "missed_attack_count": 2,
+        "false_alarm_count": 0
+      },
+      "high": {
+        "cases": 85,
+        "forced_accuracy": 0.7529411764705882,
+        "auto_resolved": 0.9058823529411765,
+        "auto_accuracy": 0.7792207792207793,
+        "missed_attack_count": 14,
+        "false_alarm_count": 3
+      },
+      "low": {
+        "cases": 106,
+        "forced_accuracy": 0.8301886792452831,
+        "auto_resolved": 0.9245283018867925,
+        "auto_accuracy": 0.8571428571428571,
+        "missed_attack_count": 10,
+        "false_alarm_count": 4
+      },
+      "medium": {
+        "cases": 71,
+        "forced_accuracy": 0.7746478873239436,
+        "auto_resolved": 0.9295774647887324,
+        "auto_accuracy": 0.803030303030303,
+        "missed_attack_count": 9,
+        "false_alarm_count": 4
+      }
+    },
+    "by_label_basis": {
+      "benign: recurring": {
+        "cases": 100,
+        "forced_accuracy": 0.87,
+        "auto_resolved": 0.93,
+        "auto_accuracy": 0.8817204301075269,
+        "missed_attack_count": 0,
+        "false_alarm_count": 11
+      },
+      "benign: reviewed": {
+        "cases": 4,
+        "forced_accuracy": 1.0,
+        "auto_resolved": 1.0,
+        "auto_accuracy": 1.0,
+        "missed_attack_count": 0,
+        "false_alarm_count": 0
+      },
+      "malicious: foothold": {
+        "cases": 56,
+        "forced_accuracy": 0.8214285714285714,
+        "auto_resolved": 0.9642857142857143,
+        "auto_accuracy": 0.8148148148148148,
+        "missed_attack_count": 10,
+        "false_alarm_count": 0
+      },
+      "malicious: lineage": {
+        "cases": 86,
+        "forced_accuracy": 0.686046511627907,
+        "auto_resolved": 0.9069767441860465,
+        "auto_accuracy": 0.7307692307692307,
+        "missed_attack_count": 21,
+        "false_alarm_count": 0
+      },
+      "malicious: recurring": {
+        "cases": 10,
+        "forced_accuracy": 0.8,
+        "auto_resolved": 0.8,
+        "auto_accuracy": 1.0,
+        "missed_attack_count": 0,
+        "false_alarm_count": 0
+      },
+      "malicious: reviewed": {
+        "cases": 12,
+        "forced_accuracy": 0.5833333333333334,
+        "auto_resolved": 0.75,
+        "auto_accuracy": 0.5555555555555556,
+        "missed_attack_count": 4,
+        "false_alarm_count": 0
+      }
+    },
+    "side_effect_cases": {
+      "cases": 12,
+      "called_malicious": 9,
+      "called_benign": 1,
+      "escalated": 2
+    },
+    "file": "ollama-qwen2.5-14b.jsonl"
   }
 ]

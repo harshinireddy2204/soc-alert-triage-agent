@@ -9,6 +9,7 @@ Scored on the **test** split: 268 cases (164 malicious, 104 benign) from 68 reco
 | `always-escalate` | 0% (0 to 0) | n/a | 0 of 164 (0.0%) | 0 of 104 (0.0%) | 61% (50 to 73) |
 | `severity-rule` | 100% (100 to 100) | 62% (52 to 71) | 87 of 164 (53.0%) | 14 of 104 (13.5%) | 62% (52 to 71) |
 | `scorecard` | 63% (55 to 71) | 96% (93 to 98) | 5 of 164 (3.0%) | 2 of 104 (1.9%) | 90% (85 to 94) |
+| `ollama:qwen2.5:14b` | 92% (88 to 95) | 81% (74 to 87) | 35 of 164 (21.3%) | 11 of 104 (10.6%) | 79% (72 to 85) |
 
 ![What each policy did with every case](../docs/img/outcomes_test.png)
 
@@ -19,6 +20,7 @@ Scored on the **test** split: 268 cases (164 malicious, 104 benign) from 68 reco
 | `always-escalate` | 100% | 39% | n/a | 100% | 0% |
 | `severity-rule` | 0% | n/a | 38% | 0% | 2% |
 | `scorecard` | 37% | 21% | 4% | 75% | 38% |
+| `ollama:qwen2.5:14b` | 8% | 50% | 19% | 19% | 0% |
 
 ![Accuracy against share of cases acted on](../docs/img/accuracy_coverage_test.png)
 
@@ -29,6 +31,7 @@ Scored on the **test** split: 268 cases (164 malicious, 104 benign) from 68 reco
 | `always-escalate` | 0.0 | 0.00 | 0 / 0 | cites nothing | 0 |
 | `severity-rule` | 0.0 | 0.00 | 0 / 0 | 100% of 527 | 0 |
 | `scorecard` | 0.0 | 0.00 | 0 / 0 | 100% of 527 | 0 |
+| `ollama:qwen2.5:14b` | 3.7 | 123.97 | 13411 / 510 | 100% of 892 | 1 |
 
 ## `always-escalate`
 
@@ -219,4 +222,79 @@ Wrong verdicts it acted on without escalating:
 | C0342 | malicious | benign | 0.78 | low | `C:\windows\system32\svchost.exe` | Task Scheduler registering the attacker's MordorElevated task, which runs an Empire launcher as SYSTEM at logon |
 | C0354 | malicious | benign | 0.78 | low | `C:\windows\system32\svchost.exe` | Task Scheduler registering the attacker's MordorSchtask task, which runs an Empire launcher daily |
 | C0368 | benign | malicious | 0.90 | medium | `C:\ProgramData\bginfo.exe` | Ordinary desktop software started in the user's logon session (wallpaper tool, Teams, OneDrive, Edge, Windows shell components) |
+
+## `ollama:qwen2.5:14b`
+
+By highest rule severity in the case:
+
+| Severity | Cases | Accuracy if forced | Auto-resolved | Accuracy when it decides | Attacks auto-closed | Benign auto-raised |
+|---|---|---|---|---|---|---|
+| critical | 6 | 67% | 83% | 60% | 2 | 0 |
+| high | 85 | 75% | 91% | 78% | 14 | 3 |
+| low | 106 | 83% | 92% | 86% | 10 | 4 |
+| medium | 71 | 77% | 93% | 80% | 9 | 4 |
+
+By how the ground-truth label was established:
+
+| Truth and basis | Cases | Accuracy if forced | Auto-resolved | Accuracy when it decides | Attacks auto-closed | Benign auto-raised |
+|---|---|---|---|---|---|---|
+| benign: recurring | 100 | 87% | 93% | 88% | 0 | 11 |
+| benign: reviewed | 4 | 100% | 100% | 100% | 0 | 0 |
+| malicious: foothold | 56 | 82% | 96% | 81% | 10 | 0 |
+| malicious: lineage | 86 | 69% | 91% | 73% | 21 | 0 |
+| malicious: recurring | 10 | 80% | 80% | 100% | 0 | 0 |
+| malicious: reviewed | 12 | 58% | 75% | 56% | 4 | 0 |
+
+Side-effect cases (not scored): 12 cases, 9 called malicious, 1 called benign, 2 escalated.
+
+Wrong verdicts it acted on without escalating:
+
+| Case | Truth | Verdict | Confidence | Rule severity | Process | Why the truth is what it is |
+|---|---|---|---|---|---|---|
+| C0004 | benign | malicious | 0.90 | high | `C:\Windows\System32\taskhostw.exe` | Windows components rewriting their own log and cache files, which this lab's Sysmon configuration reports as blocked shredding |
+| C0011 | malicious | benign | 0.95 | medium | `C:\Windows\System32\vssadmin.exe` | Started by the attacker's cmd.exe (PID 2892): Operator's command prompt on the domain controller, where the documented vssadmin, copy and reg save commands were typed |
+| C0013 | malicious | benign | 0.90 | high | `C:\Windows\System32\cmd.exe` | Operator's command prompt on the domain controller, where the documented vssadmin, copy and reg save commands were typed |
+| C0015 | malicious | benign | 0.90 | high | `C:\Windows\System32\reg.exe` | Started by the attacker's cmd.exe (PID 2892): Operator's command prompt on the domain controller, where the documented vssadmin, copy and reg save commands were typed |
+| C0022 | malicious | benign | 0.90 | low | `C:\Windows\System32\whoami.exe` | Started by the attacker's powershell.exe (PID 7456): PowerShell Empire agent, started with Empire's stager command line (-noP -sta -w 1 -enc) |
+| C0031 | malicious | benign | 0.90 | low | `C:\Windows\System32\whoami.exe` | Started by the attacker's powershell.exe (PID 1648): PowerShell Empire agent, started with Empire's stager command line (-noP -sta -w 1 -enc) |
+| C0038 | malicious | benign | 0.95 | low | `C:\Windows\System32\whoami.exe` | Started by the attacker's powershell.exe (PID 5972): PowerShell Empire agent, started with Empire's stager command line (-noP -sta -w 1 -enc) |
+| C0041 | benign | malicious | 0.90 | high | `C:\Windows\System32\svchost.exe` | Windows components rewriting their own log and cache files, which this lab's Sysmon configuration reports as blocked shredding |
+| C0043 | benign | malicious | 0.95 | high | `C:\Windows\system32\taskhostw.exe` | Windows components rewriting their own log and cache files, which this lab's Sysmon configuration reports as blocked shredding |
+| C0061 | benign | malicious | 0.90 | low | `<unknown process>` | The System process reading the disk directly, normal kernel behaviour |
+| C0078 | malicious | benign | 0.90 | medium | `C:\Windows\System32\netsh.exe` | Started by the attacker's cmd.exe (PID 4160): Operator's command prompt from which the firewall rule was added and removed |
+| C0079 | malicious | benign | 0.95 | medium | `C:\Windows\System32\netsh.exe` | Started by the attacker's cmd.exe (PID 4160): Operator's command prompt from which the firewall rule was added and removed |
+| C0103 | malicious | benign | 0.90 | high | `C:\Windows\System32\svchost.exe` | Event Log service applying the attacker's change; the events name the attacker's replacement log file |
+| C0150 | benign | malicious | 0.90 | low | `C:\Windows\System32\svchost.exe` | Task Scheduler service updating built-in Windows or vendor tasks. No attacker step in this capture creates or changes a scheduled task. |
+| C0168 | malicious | benign | 0.95 | critical | `C:\Users\wardog\Desktop\PurpleSharp.exe` | Started by the attacker's cmd.exe (PID 4840): Operator's command prompt from which PurpleSharp was run |
+| C0172 | malicious | benign | 0.95 | low | `C:\Windows\System32\conhost.exe` | Started by the attacker's cmd.exe (PID 4840): Operator's command prompt from which PurpleSharp was run |
+| C0176 | malicious | benign | 0.85 | low | `C:\Users\IT01-Pedro\Downloads\payload.exe` | Metasploit payload run from the user's Downloads folder, the entry point of this capture |
+| C0189 | malicious | benign | 0.90 | high | `C:\Users\wardog\Desktop\Seatbelt.exe` | Started by the attacker's cmd.exe (PID 12360): Operator's command prompt from which Seatbelt was run |
+| C0199 | malicious | benign | 0.90 | low | `C:\Windows\System32\net1.exe` | Started by the attacker's powershell.exe (PID 7456): PowerShell Empire agent, started with Empire's stager command line (-noP -sta -w 1 -enc) |
+| C0204 | malicious | benign | 0.95 | medium | `C:\Windows\System32\netsh.exe` | Started by the attacker's powershell.exe (PID 9320): Operator's PowerShell console that started the Python web server |
+| C0205 | malicious | benign | 0.95 | medium | `C:\Windows\System32\netsh.exe` | Started by the attacker's powershell.exe (PID 9320): Operator's PowerShell console that started the Python web server |
+| C0229 | malicious | benign | 0.90 | high | `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` | Attacker-controlled PowerShell that opened the remoting session to HR001 |
+| C0249 | benign | malicious | 0.90 | medium | `C:\Windows\System32\wbem\WmiPrvSE.exe` | WMI provider host running the Desired State Configuration consistency check as SYSTEM. It loads Microsoft DSC resource modules (including the Active Directory ones, which read the domain password policy), which is why PowerShell-host and discovery rules fire |
+| C0270 | malicious | benign | 0.95 | low | `System` | The attacker's MSBuild project pshell.xml written to C:\Windows\Tasks over SMB; the file named in the event is the dropped payload |
+| C0274 | malicious | benign | 0.95 | medium | `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe` | Started by the attacker's cmd.exe (PID 6952): Started remotely over WMI by the attacker's Empire agent to run MSBuild on the dropped project file |
+| C0281 | malicious | benign | 0.90 | high | `C:\Windows\System32\cmd.exe` | Command line of the service the attacker created remotely; it starts an Empire agent as SYSTEM |
+| C0294 | malicious | benign | 0.90 | low | `C:\Windows\System32\sc.exe` | Started by the attacker's powershell.exe (PID 1112): PowerShell Empire agent, started with Empire's stager command line (-noP -sta -w 1 -enc) |
+| C0309 | malicious | benign | 0.90 | medium | `C:\Windows\System32\net.exe` | Started remotely over WMI by the attacker's wmic /node:WORKSTATION6 process call create |
+| C0314 | malicious | benign | 0.95 | critical | `C:\Users\pgustavo\Downloads\PurpleSharp.exe` | Started by the attacker's cmd.exe (PID 5776): Operator's command prompt from which PurpleSharp was run |
+| C0317 | malicious | benign | 0.90 | medium | `C:\Windows\System32\wsmprovhost.exe` | PowerShell remoting session opened by PurpleSharp's T1021.006 step |
+| C0318 | malicious | benign | 0.90 | medium | `C:\Windows\System32\wsmprovhost.exe` | PowerShell remoting session opened by PurpleSharp's T1021.006 step |
+| C0319 | malicious | benign | 0.90 | high | `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` | Started by the attacker's wsmprovhost.exe (PID 4816): PowerShell remoting session opened by PurpleSharp's T1021.006 step |
+| C0321 | malicious | benign | 0.95 | high | `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` | Started by the attacker's wsmprovhost.exe (PID 996): PowerShell remoting session opened by PurpleSharp's T1021.006 step |
+| C0324 | malicious | benign | 0.95 | low | `C:\Windows\System32\svchost.exe` | Task Scheduler registering the attacker's remotely created task; it is named EventCacheManager and placed under \Microsoft\Windows to blend in |
+| C0342 | malicious | benign | 0.95 | low | `C:\windows\system32\svchost.exe` | Task Scheduler registering the attacker's MordorElevated task, which runs an Empire launcher as SYSTEM at logon |
+| C0345 | benign | malicious | 0.95 | low | `System` | The System process reading the disk directly, normal kernel behaviour |
+| C0347 | benign | malicious | 0.90 | medium | `C:\Windows\System32\wininit.exe` | csrss.exe and wininit.exe open lsass.exe with full access when Windows starts |
+| C0355 | malicious | benign | 0.80 | high | `C:\windows\System32\WindowsPowerShell\v1.0\powershell.exe` | Empire agent 13ZK6G7M (PID 5676 in the attacker console transcript) |
+| C0358 | benign | malicious | 0.90 | low | `System` | The System process reading the disk directly, normal kernel behaviour |
+| C0362 | benign | malicious | 0.90 | medium | `C:\Windows\System32\csrss.exe` | csrss.exe and wininit.exe open lsass.exe with full access when Windows starts |
+| C0363 | benign | malicious | 0.95 | medium | `C:\Windows\System32\wininit.exe` | csrss.exe and wininit.exe open lsass.exe with full access when Windows starts |
+| C0386 | malicious | benign | 0.90 | high | `C:\Windows\System32\cmd.exe` | Command run by the Exchange worker process through the web shell the exploit planted |
+| C0387 | malicious | benign | 0.90 | high | `C:\Windows\System32\cmd.exe` | Command run by the Exchange worker process through the web shell the exploit planted |
+| C0388 | malicious | benign | 0.95 | high | `C:\Windows\System32\conhost.exe` | Started by the attacker's cmd.exe (PID 23392): Command run by the Exchange worker process through the web shell the exploit planted |
+| C0390 | malicious | benign | 0.95 | high | `C:\Windows\System32\whoami.exe` | Started by the attacker's cmd.exe (PID 23392): Command run by the Exchange worker process through the web shell the exploit planted |
+| C0391 | malicious | benign | 0.95 | high | `C:\Windows\System32\whoami.exe` | Started by the attacker's cmd.exe (PID 19748): Command run by the Exchange worker process through the web shell the exploit planted |
 

@@ -36,6 +36,7 @@ Scored on the **test** split: 268 cases (164 malicious, 104 benign) from 68 reco
 | `always-escalate` | 0% (0 to 0) | n/a | 0 of 164 (0.0%) | 0 of 104 (0.0%) | 61% (50 to 73) |
 | `severity-rule` | 100% (100 to 100) | 62% (52 to 71) | 87 of 164 (53.0%) | 14 of 104 (13.5%) | 62% (52 to 71) |
 | `scorecard` | 63% (55 to 71) | 96% (93 to 98) | 5 of 164 (3.0%) | 2 of 104 (1.9%) | 90% (85 to 94) |
+| `ollama:qwen2.5:14b` | 92% (88 to 95) | 81% (74 to 87) | 35 of 164 (21.3%) | 11 of 104 (10.6%) | 79% (72 to 85) |
 
 ![What each policy did with every case](docs/img/outcomes_test.png)
 
@@ -46,6 +47,7 @@ Scored on the **test** split: 268 cases (164 malicious, 104 benign) from 68 reco
 | `always-escalate` | 100% | 39% | n/a | 100% | 0% |
 | `severity-rule` | 0% | n/a | 38% | 0% | 2% |
 | `scorecard` | 37% | 21% | 4% | 75% | 38% |
+| `ollama:qwen2.5:14b` | 8% | 50% | 19% | 19% | 0% |
 
 ![Accuracy against share of cases acted on](docs/img/accuracy_coverage_test.png)
 
@@ -56,6 +58,7 @@ Scored on the **test** split: 268 cases (164 malicious, 104 benign) from 68 reco
 | `always-escalate` | 0.0 | 0.00 | 0 / 0 | cites nothing | 0 |
 | `severity-rule` | 0.0 | 0.00 | 0 / 0 | 100% of 527 | 0 |
 | `scorecard` | 0.0 | 0.00 | 0 / 0 | 100% of 527 | 0 |
+| `ollama:qwen2.5:14b` | 3.7 | 123.97 | 13411 / 510 | 100% of 892 | 1 |
 <!-- results:end -->
 
 **How to read this.**
@@ -71,11 +74,45 @@ Scored on the **test** split: 268 cases (164 malicious, 104 benign) from 68 reco
   chain is clean. The only way to get these right is to follow the artifact to where it came from,
   which is an investigation, not a checklist. That is the gap an agent has to close to earn its place.
 
-**The LLM agent's row is not in the table yet.** Nothing in this repository is reported unless it
-was measured, and that run needs a model. It is one command (see
-[Run the agent](#run-the-agent-on-a-local-model)); `python -m triage report` then adds the row and
-redraws both charts. Full breakdowns, including every wrong verdict and why the truth is what it
-is, are in [results/RESULTS_test.md](results/RESULTS_test.md).
+- **The LLM agent (`qwen2.5:14b`, a free 14-billion-parameter model on one desktop) does not earn
+  its place alone.** It acts on 92% of cases and is right on 81% of them. It closes 35 of 164 real
+  attacks as benign, seven times the checklist's 5, all but two at 0.90 confidence or higher. Every
+  event it cited was one it had really been shown, so the evidence is real and the conclusion is
+  wrong.
+- **Its misses are one reasoning error.** It treats a legitimate program or a real user account as
+  proof of innocence. It closed `net user backdoor /add` as "a legitimate administrative action",
+  `whoami` run by the Exchange web server as normal IIS activity, and Seatbelt as a known
+  reconnaissance tool the user "may be" running on purpose. Twelve of the 35 are attacks the
+  checklist had already called correctly. Of the checklist's own five misses the agent caught one,
+  escalated one and repeated three.
+- **Its false alarms are the mirror image.** Almost all of the 11 are Windows itself: `wininit.exe` and
+  `csrss.exe` opening LSASS at boot, the System process reading the disk. The model knows what
+  credential dumping looks like and does not know what a normal boot looks like.
+- A smaller model was tried first. `qwen2.5:7b` closed 11 of 22 attacks as benign on a 30-case dev
+  sample and was not taken to the test split; the 14B model closed 4 of the same 22.
+
+### Where the agent does help
+
+The two policies fail on different cases, so the saved verdicts can be replayed in combination. No
+model is run again (`python scripts/layered.py --agent ollama-qwen2.5-14b`):
+
+| Policy | Auto-resolved | Accuracy when it decides | Attacks auto-closed as benign | Benign auto-raised as attack |
+|---|---|---|---|---|
+| checklist alone | 63% | 96% | 5 of 164 | 2 of 104 |
+| agent alone | 92% | 81% | 35 of 164 | 11 of 104 |
+| checklist first, agent decides the rest | 97% | 88% | 25 of 164 | 7 of 104 |
+| **checklist first, agent may only confirm an attack** | **84%** | **95%** | **5 of 164** | 7 of 104 |
+| act only when both agree | 51% | 98% | 3 of 164 | 0 of 104 |
+
+The obvious design, handing the agent whatever the checklist could not decide, is the worst of the
+three: those are the agent's weakest cases and it closes 20 more attacks. The useful design is
+one-directional. The agent may turn an escalation into a confirmed attack and may never close one.
+That takes work off the analyst (escalations fall from 37% of cases to 16%) with no additional
+attack closed, at the price of five more benign cases raised.
+
+**This table is hindsight.** The combinations were chosen after seeing the test results, so treat
+it as a hypothesis to confirm on new data, not as a result. Full breakdowns, including every wrong
+verdict and why the truth is what it is, are in [results/RESULTS_test.md](results/RESULTS_test.md).
 
 ## The seventh metric
 
@@ -96,6 +133,7 @@ one that is missing:
 | `always-escalate` | 0% | 0.0s | 0% | 100% | **0 of 164 attacks (0.0%)** | n/a |
 | `severity-rule` | 100% | 0.0s | 87% | 0% | **87 of 164 attacks (53.0%)** | n/a |
 | `scorecard` | 63% | 0.0s | 78% | 37% | **5 of 164 attacks (3.0%)** | 5.2x |
+| `ollama:qwen2.5:14b` | 92% | 124.0s | 83% | 8% | **35 of 164 attacks (21.3%)** | 2.7x |
 
 Columns 1, 2, 3 and 5 follow the published definitions: share of alerts fully handled without a person, mean time to a triage decision, share of benign alerts closed without a person, and share sent to a person. Metrics 4 and 6 (analyst time per investigation, incident response time) need live analysts and are not measured here. **Silent misses** are real attacks closed with no human review. **Escalation aim** is how much more often the policy's best guess is wrong on the cases it escalates than on the cases it closes itself; above 1x means it escalates the right cases, and n/a means it never escalates or never decides.
 <!-- seventh:end -->
@@ -103,6 +141,11 @@ Columns 1, 2, 3 and 5 follow the published definitions: share of alerts fully ha
 `severity-rule` is the cautionary row. It automates everything, escalates nothing, answers
 instantly, and removes most false positives. On the published metrics measured here it is close to perfect.
 It also closes more than half of the real attacks without anyone looking.
+
+The LLM agent is the realistic version of the same problem. A 92% automation rate and an 8%
+escalation rate would read as a strong quarter on a dashboard built from the six. The seventh
+column says it let one attack in five through, and that its escalations were only weakly aimed at
+the cases it gets wrong (2.7x, against 5.2x for a checklist).
 
 The point is not that the six are wrong. It is that they are only safe to optimise once a seventh
 is held fixed: **silent misses, measured against ground truth, with escalation shown to be aimed
@@ -214,7 +257,7 @@ python -m triage build            # event store, detection, labels (about 4 minu
 python -m triage run scorecard    # also: severity-rule, always-escalate
 python -m triage report           # tables, charts, and the Results section of this README
 python -m triage show C0324       # one case, every policy's investigation, and the truth
-pytest                            # 44 tests, no data needed
+pytest                            # 45 tests, no data needed
 ```
 
 `build` reproduces `benchmark/cases.jsonl` byte for byte from the pinned sources.
@@ -224,13 +267,15 @@ pytest                            # 44 tests, no data needed
 Free, and nothing leaves your machine. Install [Ollama](https://ollama.com), then:
 
 ```bash
-ollama pull qwen2.5:7b
-python -m triage run llm --model qwen2.5:7b --split dev --limit 10    # a quick look first
-python -m triage run llm --model qwen2.5:7b                           # the 280 test cases
+ollama pull qwen2.5:14b
+python -m triage run llm --model qwen2.5:14b --split dev --limit 10    # a quick look first
+python -m triage run llm --model qwen2.5:14b                           # the 280 test cases
 python -m triage report
+python scripts/layered.py --agent ollama-qwen2.5-14b                   # replay it combined with the checklist
 ```
 
-A run saves each case as it finishes and resumes where it stopped. Any model Ollama serves works;
+The reported run took about two minutes a case, close to ten hours for the test split, on a
+desktop. A run saves each case as it finishes and resumes where it stopped. Any model Ollama serves works;
 so does any OpenAI-compatible endpoint:
 
 ```bash
@@ -241,6 +286,9 @@ Each model's results go to their own file, so several models can sit side by sid
 
 ## What this does not show
 
+- **One model, one run.** The agent result is a single local 14B model at temperature 0. It says
+  nothing about larger or hosted models, and one investigation of 280 failed outright and was
+  counted as an escalation.
 - **It is lab data.** The benign activity is operating-system, cloud-agent and monitoring noise, not
   administrators doing unusual but legitimate things. Production accuracy will be lower.
 - **The mix is unrealistic.** 62% of scored cases are malicious. A real queue is mostly false
@@ -260,13 +308,16 @@ Each model's results go to their own file, so several models can sit side by sid
 
 ## What I would build next
 
-1. **Case-level correlation.** Several cases often belong to one intrusion. Triage them together and
+1. **Confirm the one-directional design on new data, and test a stronger model.** One model was
+   measured. The harness takes any OpenAI-compatible endpoint, so the open question is how the
+   silent-miss count moves with model strength.
+2. **Case-level correlation.** Several cases often belong to one intrusion. Triage them together and
    measure whether context from one case fixes verdicts on its neighbours.
-2. **Cost-aware escalation.** A missed attack and a wasted analyst hour do not cost the same. Pick
+3. **Cost-aware escalation.** A missed attack and a wasted analyst hour do not cost the same. Pick
    the escalation threshold from an explicit cost ratio and report the operating point.
-3. **A second labeler** on a sample, to put a number on label agreement.
-4. **Benign administrator activity**, the hardest negative class and the one this data lacks.
-5. **Regression tracking.** Run the benchmark on every prompt or model change and fail the build
+4. **A second labeler** on a sample, to put a number on label agreement.
+5. **Benign administrator activity**, the hardest negative class and the one this data lacks.
+6. **Regression tracking.** Run the benchmark on every prompt or model change and fail the build
    when missed attacks go up.
 
 ## Repository map
@@ -277,7 +328,7 @@ src/triage/  sigma.py (rule evaluator)  corpus.py, build.py (ingest)  detect.py 
              tools.py, store.py (investigation)  agent.py, llm.py  baselines.py
              evaluate.py, report.py  cli.py
 results/     saved runs and generated tables
-tests/       44 tests that run without the data
+tests/       45 tests that run without the data
 docs/        methodology, charts
 ```
 
